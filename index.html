@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Payen Tools-GLB URDF JSON Viewer</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.169.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.169.0/examples/jsm/"
+    }
+  }
+  </script>
+  <style>
+    body { margin: 0; display: flex; height: 100vh; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, Pingfang; background:#222; }
+    #sidebar { width: 500px; background: #f6f7f9; margin: 16px; box-sizing: border-box; overflow: auto; border-right: 1px solid #ddd; border-radius: 16px; padding:8px 16px; }
+    #viewer { flex: 1; position: relative; background: #f4fcfe; }
+    .json-container { position: relative; margin-top: 4px; }
+    textarea { width: 100%; height: 400px; font-family: Pingfang; font-size: 13px; color: #333; box-sizing: border-box; border: 1px solid #E8E8E8; border-radius: 8px; white-space: pre; resize: vertical; }
+    .json-buttons { position: absolute; bottom: 8px; left: 8px; display: flex; gap: 4px; }
+    .json-buttons button { padding: 4px 8px; font-size: 11px; color:#666; background: #F7F7F7; border: none; border-radius: 4px; cursor: pointer; }
+    .json-buttons button:hover { background:#ddd; }
+    .joint-control { margin: 8px 0; display:flex; gap:8px; align-items:center; padding:4px; border-radius:6px; }
+    .joint-control.selected { background:#EBE9F9; }
+    .status { font-size: 12px; color:#666; margin-bottom:8px; padding-top:10px; }
+    button { flex:1; padding: 10px; cursor: pointer; border-radius: 8px; border: 1px solid #E8E8E8; background: #FFF; font-size: 12px; display:flex; align-items:center; justify-content:center; gap:6px; transition: background 0.2s, transform 0.1s; }
+    button:hover { background:#f0f0f0; }
+    button:active { background:#ddd; transform:scale(0.97); }
+    h3 { margin:0; font-size:20px; padding-top:10px; }
+    .header-row { display:flex; align-items:center; justify-content:space-between; margin-top:12px; }
+    label { display:block; margin:8px 0; color:#333; }
+    input[type="file"]::-webkit-file-upload-button { background: #2F28A3; color: #FFF; border-radius: 8px; border: none; padding: 4px 8px; cursor: pointer; font-size: 13px; width: 100px; height: 30px; }
+    .angle-input { width: 60px; text-align: right; border:1px solid #efefef; border-radius:4px; padding:2px 4px; }
+    .button-row { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+    .small-btn { flex:none; padding:6px 8px; font-size:11px; }
+    .view-buttons { position:absolute; bottom:20px; left:60%; transform:translateX(-40%); display:flex; gap:8px; }
+    .view-buttons button { width:80px; height:32px; background:#333; color:#FFF; font-size:12px; padding:8px 0; border: none; border-radius:8px; cursor:pointer; }
+    .view-buttons button:hover { background:#2F28A3; color:#FFF; border: none;}
+    #jointEditor { position: fixed; top: 16px; bottom: 16px; right: -400px; width: 280px; background: #f6f7f9; box-shadow: -2px 0 8px rgba(0,0,0,0.2); border-left: 1px solid #ddd; border-radius: 16px; transition: right 0.3s ease; padding: 16px; margin: 0 8px 0 0; box-sizing: border-box; z-index: 1000; display:flex; flex-direction:column; }
+    #jointEditor.active { right: 0; }
+    #jointEditor h4 { margin-top:0; }
+    #jointEditor label { display:block; margin:8px 0 4px; font-size:12px; color:#666; }
+    #jointEditor input { width:100%; height:32px; padding:4px; margin-bottom:8px; box-sizing:border-box; border:1px solid #E8E8E8; border-radius:6px; }
+    .editor-body { flex:1; overflow:auto; padding-bottom: 8px; }
+    .editor-footer { position: sticky; bottom: 0; background:#f6f7f9; padding-top: 8px; }
+    #saveJointBtn { width:100%; height:40px; margin:0; background:#241F7D; color:#FFF; border: none; }
+    .axis-row { display:flex; gap:8px; align-items:center; margin-top:8px; }
+    .axis-item { flex:1; }
+    .axis-item label { display:block; margin:0 0 4px; font-size:12px; }
+    .axis-item input { width:100%; }
+    .urdf-header { display:flex; align-items:center; justify-content:space-between; margin-top:8px; }
+    .status-badge { padding:4px 8px; background:#F4F4F8; color:#241F7D; border-radius:8px; font-size:12px; }
+    /* range styling */
+    input[type="range"] { accent-color:#241F7D; }
+    input[type="range"]::-webkit-slider-runnable-track { background:transparent; height:8px; border-radius:4px; border:none; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; background:#241F7D; width:14px; height:14px; border-radius:50%; margin-top:-5px; border:none; }
+    input[type="range"]::-moz-range-track { background:transparent; height:px; border:none; border-radius:4px; }
+    input[type="range"]::-moz-range-thumb { background:#241F7D; width:14px; height:14px; border:none; border-radius:50%; }
+  </style>
+</head>
+<body>
+<div id="sidebar">
+  <h3>Payen Tools - GLB URDF JSON Viewer</h3>
+  
+  <label><strong>上传 GLB / GLTF</strong></label>
+  <input type="file" id="glbInput" accept=".glb,.gltf" />
+  <div class="urdf-header">
+    <label><strong>URDF / JSON 编辑</strong></label>
+    <div id="status" class="status-badge">状态：等待操作</div>
+  </div>
+  <div class="json-container">
+    <textarea id="jsonInput">{
+  "urdf": {
+    "joints": [
+      {
+        "name": "Bone",
+        "axis": {"x": 0, "y": 1, "z": 0}
+      }
+    ]
+  }
+}</textarea>
+    <div class="json-buttons">
+      <button id="clearJsonBtn"><i class="fa-solid fa-trash"></i> 清空</button>
+    </div>
+  </div>
+  <div class="button-row">
+    <button id="applyBtn"><i class="fa-solid fa-check"></i> 应用JSON</button>
+    <button id="refreshBtn"><i class="fa-solid fa-rotate"></i> 刷新模型</button>
+    <button id="selfCheckBtn"><i class="fa-solid fa-play"></i> 开始自检</button>
+    <button id="copyBtn"><i class="fa-solid fa-copy"></i> 复制JSON</button>
+  </div>
+  <div class="header-row">
+    <h4>关节控制</h4>
+    <button id="clearAllBtn" class="small-btn"><i class="fa-solid fa-eraser"></i> 清空数值</button>
+  </div>
+  <div id="jointControls"></div>
+  
+</div>
+<div id="viewer"></div>
+<div class="view-buttons">
+  <button data-view="top">顶视图</button>
+  <button data-view="bottom">底视图</button>
+  <button data-view="front">前视图</button>
+  <button data-view="back">后视图</button>
+  <button data-view="left">左视图</button>
+  <button data-view="right">右视图</button>
+</div>
+<div id="jointEditor">
+  <div class="editor-body">
+    <h4>关节编辑器</h4>
+    <label>关节名称</label>
+    <input id="editorName" type="text" readonly>
+    <label>父级</label>
+    <input id="editorParent" type="text">
+    <label>子级</label>
+    <input id="editorChild" type="text">
+    <div class="axis-row">
+      <div class="axis-item">
+        <label>Axis X</label>
+        <input id="axisX" type="number" step="0.01">
+      </div>
+      <div class="axis-item">
+        <label>Axis Y</label>
+        <input id="axisY" type="number" step="0.01">
+      </div>
+      <div class="axis-item">
+        <label>Axis Z</label>
+        <input id="axisZ" type="number" step="0.01">
+      </div>
+    </div>
+  </div>
+  <div class="editor-footer">
+    <button id="saveJointBtn">保存关节</button>
+  </div>
+</div>
+<script type="module">
+// 使用importmap解决模块依赖问题
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// 将THREE对象添加到全局作用域，以便现有代码可以访问
+window.THREE = THREE;
+window.GLTFLoader = GLTFLoader;
+window.DRACOLoader = DRACOLoader;
+window.OrbitControls = OrbitControls;
+(function(){
+window.addEventListener('load',()=>{
+  // 确保 THREE 对象已加载
+  if (typeof THREE === 'undefined') {
+    console.error('THREE.js 未正确加载');
+    document.getElementById('status').textContent = '状态：THREE.js 加载失败';
+    return;
+  }
+  const statusEl=document.getElementById('status');
+function toggleJointEditor(show, name){
+  const editor=document.getElementById('jointEditor');
+  if(show){
+    editor.classList.add('active');
+    document.getElementById('editorName').value=name;
+    const j=jointMap[name];
+    if(j){
+      document.getElementById('editorParent').value=j.parentLinkName||j.parent||'';
+      document.getElementById('editorChild').value=j.childLinkName||j.child||'';
+      document.getElementById('axisX').value=j.axis.x||0;
+      document.getElementById('axisY').value=j.axis.y||0;
+      document.getElementById('axisZ').value=j.axis.z||0;
+    }
+  } else {
+    editor.classList.remove('active');
+  }
+}
+
+//高亮滚动
+function focusJointInJson(name){
+  const ta=document.getElementById('jsonInput');
+  if(!ta) return;
+  const text=ta.value;
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  const re=new RegExp(`"name"\\s*:\\s*"${esc(name)}"`);
+  const idx=text.search(re);
+  if(idx===-1) return;
+
+  // 选中包含 name 的整行
+  let start=text.lastIndexOf('\n', idx);
+  start = start === -1 ? 0 : start + 1;
+  let end=text.indexOf('\n', idx);
+  end = end === -1 ? text.length : end;
+
+  ta.focus();
+  try { ta.setSelectionRange(start, end); } catch(e){}
+
+  // 平滑滚动到可见位置
+  const before=text.slice(0,start);
+  const totalLines=text.split('\n').length;
+  const lineNum=(before.match(/\n/g)||[]).length;
+  const ratio=Math.min(1, Math.max(0, (lineNum-3)/(totalLines||1)));
+  ta.scrollTop = ratio * (ta.scrollHeight - ta.clientHeight);
+}
+
+
+function populateJointNames(){
+  const jointNames=[];
+  if(currentModel){
+    currentModel.traverse(n=>{ if(n.isBone||n.type==="Bone") jointNames.push(n.name); });
+  }
+  return jointNames;
+}
+
+function saveJointEdits(){
+  const name=document.getElementById('editorName').value;
+  if(!jointMap[name]) return;
+  jointMap[name].axis={
+    x:parseFloat(document.getElementById('axisX').value)||0,
+    y:parseFloat(document.getElementById('axisY').value)||0,
+    z:parseFloat(document.getElementById('axisZ').value)||0
+  };
+  jointMap[name].parentLinkName=document.getElementById('editorParent').value;
+  jointMap[name].childLinkName=document.getElementById('editorChild').value;
+  const joints=[];
+  for(const k in jointMap){
+    joints.push({ name:k, axis:jointMap[k].axis, parentLinkName:jointMap[k].parentLinkName||jointMap[k].parent||'', childLinkName:jointMap[k].childLinkName||jointMap[k].child||'' });
+    if(jointMap[k].axisHelper){
+      jointMap[k].node.remove(jointMap[k].axisHelper);
+      jointMap[k].axisHelper=null;
+    }
+  }
+  jsonInput.value=JSON.stringify({ urdf:{ joints } },null,2);
+  setStatus('关节编辑已保存并写入JSON');
+  toggleJointEditor(false);
+}
+
+document.getElementById('saveJointBtn').addEventListener('click',saveJointEdits);
+  function setStatus(text){ statusEl.textContent='状态：'+text; }
+
+  const viewer=document.getElementById('viewer');
+  const glbInput=document.getElementById('glbInput');
+  const applyBtn=document.getElementById('applyBtn');
+  const refreshBtn=document.getElementById('refreshBtn');
+  const selfCheckBtn=document.getElementById('selfCheckBtn');
+  const copyBtn=document.getElementById('copyBtn');
+  const clearJsonBtn=document.getElementById('clearJsonBtn');
+  const jsonInput=document.getElementById('jsonInput');
+  const jointControls=document.getElementById('jointControls');
+  const clearAllBtn=document.getElementById('clearAllBtn');
+  
+
+  const scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x222222);
+  const sidebarWidth=500;
+  const renderer=new THREE.WebGLRenderer({antialias:true});
+  renderer.setPixelRatio(window.devicePixelRatio?window.devicePixelRatio:1);
+  viewer.appendChild(renderer.domElement);
+
+  const camera=new THREE.PerspectiveCamera(45,(window.innerWidth-sidebarWidth)/window.innerHeight,0.1,2000);
+  camera.position.set(2,2,5);
+
+  scene.add(new THREE.AmbientLight(0xffffff,1.2));
+  const d=new THREE.DirectionalLight(0xffffff,1.5); d.position.set(5,10,7); scene.add(d);
+  const d2=new THREE.DirectionalLight(0xffffff,0.8); d2.position.set(-5,5,-5); scene.add(d2);
+
+  let controls=new OrbitControls(camera,renderer.domElement);
+  function resizeRenderer(){ const w=Math.max(window.innerWidth-sidebarWidth,100); const h=Math.max(window.innerHeight,100); renderer.setSize(w,h); camera.aspect=w/h; camera.updateProjectionMatrix(); }
+  window.addEventListener('resize',resizeRenderer);
+  resizeRenderer();
+
+  const loader=new GLTFLoader();
+  const dracoLoader=new DRACOLoader(); 
+  dracoLoader.setDecoderPath('https://unpkg.com/three@0.169.0/examples/jsm/libs/draco/'); 
+  loader.setDRACOLoader(dracoLoader);
+
+  let currentModel=null;
+  let gridHelper=null;
+  let axesHelper=null;
+
+  function clearModel(){ if(currentModel){ scene.remove(currentModel); currentModel=null; } }
+
+  function updateHelpers(){
+    if(!currentModel) return;
+    if(gridHelper){ scene.remove(gridHelper); gridHelper=null; }
+    if(axesHelper){ scene.remove(axesHelper); axesHelper=null; }
+    const box=new THREE.Box3().setFromObject(currentModel);
+    const size=box.getSize(new THREE.Vector3());
+    const maxDim=Math.max(size.x,size.y,size.z);
+    gridHelper=new THREE.GridHelper(maxDim*2,Math.max(2,Math.floor(maxDim/2)),0x888888,0x444444);
+    scene.add(gridHelper);
+    axesHelper=new THREE.AxesHelper(maxDim*1.2);
+    scene.add(axesHelper);
+  }
+
+  
+
+  function fitCameraToScene(){ if(!currentModel) return; const box=new THREE.Box3().setFromObject(currentModel); const size=box.getSize(new THREE.Vector3()); const center=box.getCenter(new THREE.Vector3()); const maxDim=Math.max(size.x,size.y,size.z); const fov=camera.fov*(Math.PI/180); let cameraZ=Math.abs(maxDim/(2*Math.tan(fov/2)))*1.5; camera.position.set(center.x,center.y,cameraZ); camera.lookAt(center); controls.target.copy(center); controls.update(); updateHelpers(); }
+
+  function tryParseGLB(arrayBuffer){ loader.parse(arrayBuffer,'',gltf=>{ clearModel(); currentModel=gltf.scene; scene.add(currentModel); fitCameraToScene();
+    // 若 JSON 为空或无 joints，自动基于骨骼生成默认 joints（含 parent/child）
+    let shouldGenerate=false; const raw=jsonInput.value.trim();
+    if(raw==='') shouldGenerate=true; else { try{ const data=JSON.parse(raw); const u=data.urdf&&Array.isArray(data.urdf.joints)?data.urdf:data; if(!u||!Array.isArray(u.joints)||u.joints.length===0) shouldGenerate=true; }catch(e){ shouldGenerate=true; } }
+    if(shouldGenerate){ const autoJoints=generateJointsFromModel(); urdfData={joints:autoJoints}; jsonInput.value=JSON.stringify({urdf:{joints:autoJoints}},null,2); setupJointsFromURDF(false); }
+    setStatus('GLB 模型加载完成');
+  },err=>{ console.error('parse error',err); setStatus('GLB 解析失败'); }); }
+  glbInput.addEventListener('change',e=>{ const f=e.target.files[0]; if(!f) return; const reader=new FileReader(); reader.onload=ev=>{ tryParseGLB(ev.target.result); }; reader.readAsArrayBuffer(f); });
+
+  let urdfData=null, jointMap={};
+  let highlightedJoint=null;
+  let gizmoThickness=0.01, gizmoLength=0.3;
+
+  function setSelfCheckLabel(t){ const nodes=selfCheckBtn.childNodes; if(nodes.length){ nodes[nodes.length-1].nodeValue=' '+t; } }
+
+  applyBtn.addEventListener('click',()=>{
+    if(!currentModel){ alert('请先上传并加载 GLB 模型'); return; }
+    let data=null; try{ data=JSON.parse(jsonInput.value); } catch(e){ alert('JSON 解析错误: '+e.message); return; }
+    urdfData=data.urdf&&Array.isArray(data.urdf.joints)?data.urdf:data;
+    if(highlightedJoint) { unhighlight(highlightedJoint); highlightedJoint=null; }
+    jointControls.querySelectorAll('.joint-control').forEach(d=>d.classList.remove('selected'));
+    setupJointsFromURDF(true);
+    setStatus('JSON 应用成功');
+  });
+
+  clearJsonBtn.addEventListener('click',()=>{
+    jsonInput.value='';
+    setStatus('JSON 已清空');
+  });
+
+  refreshBtn.addEventListener('click',()=>{
+    if(!currentModel){ alert('请先上传并加载 GLB 模型'); return; }
+    selfCheckActive=false;
+    setSelfCheckLabel('开始自检');
+    for(const k in jointMap){ applyJointRotation(k,0); jointMap[k].value=0; unhighlight(k); }
+    jointControls.querySelectorAll('input[type=range]').forEach(s=>s.value=0);
+    jointControls.querySelectorAll('input[type=number]').forEach(i=>i.value=0);
+    highlightedJoint=null;
+    jointControls.querySelectorAll('.joint-control').forEach(d=>d.classList.remove('selected'));
+    fitCameraToScene();
+    setStatus('模型已刷新到初始状态');
+  });
+
+  clearAllBtn.addEventListener('click',()=>{
+    for(const k in jointMap){ applyJointRotation(k,0); jointMap[k].value=0; }
+    jointControls.querySelectorAll('input[type=range]').forEach(s=>s.value=0);
+    jointControls.querySelectorAll('input[type=number]').forEach(i=>i.value=0);
+    setStatus('所有关节数值已清空');
+  });
+
+  function setupJointsFromURDF(preserveValues){
+    const prevValues={};
+    if(preserveValues){
+      for(const k in jointMap){ prevValues[k]={ val:jointMap[k].value, init:jointMap[k].initialQuaternion?jointMap[k].initialQuaternion.clone():jointMap[k].node.quaternion.clone() }; }
+    }
+    jointMap={};
+    jointControls.innerHTML='';
+    if(!urdfData||!Array.isArray(urdfData.joints)) return;
+    urdfData.joints.forEach(j=>{
+      const node=currentModel.getObjectByName(j.name);
+      if(!node){ return; }
+      // 预填父子级（若无则基于骨骼层级推断）兼容 parentLinkName/childLinkName
+      if(!j.parentLinkName || !j.childLinkName){
+        const parentName=node.parent && node.parent.type!=='Scene' ? node.parent.name : '';
+        let childName='';
+        for(let c of node.children){ if(c.isBone||c.type==='Bone'){ childName=c.name; break; } }
+        j.parentLinkName = j.parentLinkName || j.parent || parentName;
+        j.childLinkName = j.childLinkName || j.child || childName;
+      }
+      const val=(preserveValues&&prevValues[j.name])?prevValues[j.name].val:0;
+      const initQ=(preserveValues&&prevValues[j.name])?prevValues[j.name].init.clone():node.quaternion.clone();
+      jointMap[j.name]={
+        node:node,
+        axis:j.axis||{x:0,y:1,z:0},
+        value:val,
+        parentLinkName:j.parentLinkName||j.parent||'',
+        childLinkName:j.childLinkName||j.child||'',
+        originalMaterials:null,
+        initialQuaternion:initQ,
+        axisHelper:null,
+        controlDiv:null
+      };
+      applyJointRotation(j.name,val);
+
+      const div=document.createElement('div'); div.className='joint-control';
+      const label=document.createElement('div'); label.textContent=j.name; label.style.width='100px';
+      const slider=document.createElement('input'); slider.type='range'; slider.min=-360; slider.max=360; slider.step=1; slider.value=val; slider.style.flex='1';
+      function updateSliderTrack(){
+        const min=-360, max=360; const value=Number(slider.value)||0;
+        const percent=(value-min)/(max-min); // 0..1
+        const mid=(0-min)/(max-min); // 0.5
+        const start=Math.min(percent, mid);
+        const end=Math.max(percent, mid);
+        // Build gradient with three zones: left gray, active dark (#333), right gray
+        const grad=`linear-gradient(90deg, 
+          #F4F4F8 0%, 
+          #F4F4F8 ${start*100}%, 
+          #333 ${start*100}%, 
+          #333 ${end*100}%, 
+          #F4F4F8 ${end*100}%, 
+          #F4F4F8 100%)`;
+        slider.style.background=grad;
+      }
+      updateSliderTrack();
+      const input=document.createElement('input'); input.type='number'; input.step=1; input.className='angle-input'; input.value=val;
+
+      slider.addEventListener('input',()=>{ const v=parseFloat(slider.value); jointMap[j.name].value=v; input.value=v; applyJointRotation(j.name,v); updateSliderTrack(); });
+      input.addEventListener('change',()=>{ let v=parseFloat(input.value); if(isNaN(v)) v=0; v=Math.max(-360,Math.min(360,v)); input.value=v; slider.value=v; jointMap[j.name].value=v; applyJointRotation(j.name,v); updateSliderTrack(); });
+
+      div.appendChild(label); div.appendChild(slider); div.appendChild(input);
+      jointControls.appendChild(div);
+      jointMap[j.name].controlDiv=div;
+
+      div.addEventListener('click',()=>{ highlightJoint(j.name); });
+    });
+  }
+
+  // 当 JSON 为空时，点击模型关节生成关节 JSON
+  function generateJointsFromModel(){
+    if(!currentModel) return [];
+    const joints=[];
+    currentModel.traverse(child=>{
+      if(child.isBone || child.type==='Bone'){
+        const parentName=child.parent && child.parent.type!=='Scene' ? child.parent.name : '';
+        let childName='';
+        for(let c of child.children){ if(c.isBone||c.type==='Bone'){ childName=c.name; break; } }
+        joints.push({ name: child.name, axis: {x:0,y:1,z:0}, parentLinkName: parentName, childLinkName: childName });
+      }
+    });
+    return joints;
+  }
+
+  function applyJointRotation(name,deg){
+    const j=jointMap[name]; if(!j) return;
+    const ax=new THREE.Vector3(j.axis.x||0,j.axis.y||0,j.axis.z||0).normalize();
+    if(ax.lengthSq()===0) return;
+    if(!j.initialQuaternion) j.initialQuaternion=j.node.quaternion.clone();
+    const q=new THREE.Quaternion();
+    q.setFromAxisAngle(ax,THREE.MathUtils.degToRad(deg));
+    j.node.quaternion.copy(j.initialQuaternion).multiply(q);
+  }
+
+  let selfCheckActive=false;
+  selfCheckBtn.addEventListener('click',()=>{
+    selfCheckActive=!selfCheckActive;
+    setSelfCheckLabel(selfCheckActive?'停止自检':'开始自检');
+  });
+
+  function traverseMeshes(root, fn){ root.traverse(n=>{ if(n.isMesh){ fn(n); } }); }
+  function makeAxisGizmo(length, thickness){
+    const group=new THREE.Group();
+    const createAxis=(color, dir)=>{
+      const mat=new THREE.MeshBasicMaterial({color:color});
+      const shaftGeom=new THREE.CylinderGeometry(thickness, thickness, length*0.8, 8);
+      const shaft=new THREE.Mesh(shaftGeom, mat);
+      const coneGeom=new THREE.ConeGeometry(thickness*3, length*0.2, 12);
+      const tip=new THREE.Mesh(coneGeom, mat);
+      // Orientation
+      shaft.rotation.z = dir==='x'?Math.PI/2:0;
+      shaft.rotation.x = dir==='z'?Math.PI/2:0;
+      tip.rotation.z = dir==='x'?Math.PI/2:0;
+      tip.rotation.x = dir==='z'?Math.PI/2:0;
+      // Position along axis
+      shaft.position[dir]=(length*0.8)/2;
+      tip.position[dir]=length*0.9;
+      const axisGroup=new THREE.Group();
+      axisGroup.add(shaft);
+      axisGroup.add(tip);
+      return axisGroup;
+    };
+    const x=createAxis(0xff5555,'x');
+    const y=createAxis(0x55ff55,'y');
+    const z=createAxis(0x5582ff,'z');
+    group.add(x,y,z);
+    return group;
+  }
+  function highlightJoint(name){
+  if(highlightedJoint) unhighlight(highlightedJoint);
+  const j=jointMap[name]; if(!j) return;
+  // 左侧滑轨列表高亮对应项
+  jointControls.querySelectorAll('.joint-control').forEach(d=>d.classList.remove('selected'));
+  if(j.controlDiv){ j.controlDiv.classList.add('selected'); try{ j.controlDiv.scrollIntoView({behavior:'smooth', block:'nearest'}); }catch(e){} }
+  if(!j.originalMaterials){
+    j.originalMaterials=new Map();
+    traverseMeshes(j.node, mesh=>{ j.originalMaterials.set(mesh.uuid, mesh.material); });
+  }
+  traverseMeshes(j.node, mesh=>{
+    mesh.material=mesh.material.clone();
+    if(mesh.material.color) mesh.material.color.set(0x5582FF);
+  });
+  if(j.axisHelper){ j.node.remove(j.axisHelper); }
+  const gizmo=makeAxisGizmo(gizmoLength, gizmoThickness);
+  j.node.add(gizmo);
+  j.axisHelper=gizmo;
+  highlightedJoint=name;
+  toggleJointEditor(true,name);
+  // 新增：定位并高亮 JSON 中对应关节
+  focusJointInJson(name);
+}
+
+  function unhighlight(name){
+  const j=jointMap[name]; if(!j) return;
+  if(j.originalMaterials){ traverseMeshes(j.node, mesh=>{ const m=j.originalMaterials.get(mesh.uuid); if(m) mesh.material=m; }); }
+  if(j.axisHelper){ j.node.remove(j.axisHelper); j.axisHelper=null; }
+  toggleJointEditor(false);
+}
+
+  const raycaster=new THREE.Raycaster();
+  const mouse=new THREE.Vector2();
+  renderer.domElement.addEventListener('click',event=>{
+    if(!currentModel) return;
+    const rect=renderer.domElement.getBoundingClientRect();
+    mouse.x=((event.clientX-rect.left)/rect.width)*2-1;
+    mouse.y=-((event.clientY-rect.top)/rect.height)*2+1;
+    raycaster.setFromCamera(mouse,camera);
+    const intersects=raycaster.intersectObjects(currentModel.children,true);
+    if(intersects.length>0){
+      let obj=intersects[0].object;
+      while(obj && !jointMap[obj.name]){ obj=obj.parent; }
+      if(obj && jointMap[obj.name]){ highlightJoint(obj.name); }
+      else {
+        let shouldGenerate=false;
+        const raw=jsonInput.value.trim();
+        if(raw==='') { shouldGenerate=true; }
+        else {
+          try{
+            const data=JSON.parse(raw);
+            const u=data.urdf&&Array.isArray(data.urdf.joints)?data.urdf:data;
+            if(!u || !Array.isArray(u.joints) || u.joints.length===0) shouldGenerate=true;
+          }catch(e){ shouldGenerate=true; }
+        }
+        if(shouldGenerate){
+          const autoJoints=generateJointsFromModel();
+          urdfData={joints:autoJoints};
+          jsonInput.value=JSON.stringify({urdf:{joints:autoJoints}},null,2);
+          setupJointsFromURDF(false);
+          setStatus('已从模型骨骼生成关节 JSON');
+        }
+      }
+    }else{
+      if(highlightedJoint){ unhighlight(highlightedJoint); highlightedJoint=null; }
+    }
+  });
+
+  copyBtn.addEventListener('click', ()=>{
+    try {
+      const editedJSON = jsonInput.value;
+      JSON.parse(editedJSON);
+      navigator.clipboard.writeText(editedJSON).then(()=>{
+        setStatus('JSON 已复制到剪贴板！');
+      }).catch(err=>{
+        setStatus('复制失败: '+err);
+      });
+    } catch(e){
+      setStatus('JSON 格式错误: '+e.message);
+    }
+  });
+
+  document.querySelectorAll('.view-buttons button').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      if(!currentModel) return;
+      const box=new THREE.Box3().setFromObject(currentModel);
+      const size=box.getSize(new THREE.Vector3());
+      const center=box.getCenter(new THREE.Vector3());
+      const maxDim=Math.max(size.x,size.y,size.z);
+      const fov=camera.fov * (Math.PI/180);
+      const distance=maxDim / (2*Math.tan(fov/2)) * 1.2;
+      switch(btn.dataset.view){
+        case 'top': camera.position.set(center.x, center.y+distance, center.z); break;
+        case 'bottom': camera.position.set(center.x, center.y-distance, center.z); break;
+        case 'front': camera.position.set(center.x, center.y, center.z+distance); break;
+        case 'back': camera.position.set(center.x, center.y, center.z-distance); break;
+        case 'left': camera.position.set(center.x-distance, center.y, center.z); break;
+        case 'right': camera.position.set(center.x+distance, center.y, center.z); break;
+      }
+      camera.lookAt(center);
+      controls.target.copy(center);
+      controls.update();
+    });
+  });
+
+  function animate(){
+    requestAnimationFrame(animate);
+    controls.update();
+    if(selfCheckActive){
+      const t=Date.now()*0.001;
+      for(const k in jointMap){ const j=jointMap[k]; const val=Math.sin(t)*360; applyJointRotation(k,val); }
+    }
+    renderer.render(scene,camera);
+  }
+  animate();
+});
+})();
+</script>
+</body>
+</html>
