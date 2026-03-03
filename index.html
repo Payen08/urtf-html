@@ -49,7 +49,7 @@
     .axis-row { display:flex; gap:8px; align-items:center; margin-top:8px; }
     .axis-item { flex:1; }
     .axis-item label { display:block; margin:0 0 4px; font-size:12px; }
-    .axis-item input { width:100%; }
+    .axis-item input { width:100%; height:32px; padding:4px; box-sizing:border-box; border:1px solid #E8E8E8; border-radius:6px; pointer-events:auto; }
     .urdf-header { display:flex; align-items:center; justify-content:space-between; margin-top:8px; }
     .status-badge { padding:4px 8px; background:#F4F4F8; color:#241F7D; border-radius:8px; font-size:12px; }
     /* range styling */
@@ -119,15 +119,15 @@
     <div class="axis-row">
       <div class="axis-item">
         <label>Axis X</label>
-        <input id="axisX" type="number" step="0.01">
+        <input id="axisX" type="number" step="0.01" value="0">
       </div>
       <div class="axis-item">
         <label>Axis Y</label>
-        <input id="axisY" type="number" step="0.01">
+        <input id="axisY" type="number" step="0.01" value="0">
       </div>
       <div class="axis-item">
         <label>Axis Z</label>
-        <input id="axisZ" type="number" step="0.01">
+        <input id="axisZ" type="number" step="0.01" value="0">
       </div>
     </div>
   </div>
@@ -256,7 +256,8 @@ document.getElementById('saveJointBtn').addEventListener('click',saveJointEdits)
   viewer.appendChild(renderer.domElement);
 
   const camera=new THREE.PerspectiveCamera(45,(window.innerWidth-sidebarWidth)/window.innerHeight,0.1,2000);
-  camera.position.set(2,2,5);
+  camera.position.set(3,3,5);
+  camera.up.set(0,0,1); // Set Z-axis as up direction
 
   scene.add(new THREE.AmbientLight(0xffffff,1.2));
   const d=new THREE.DirectionalLight(0xffffff,1.5); d.position.set(5,10,7); scene.add(d);
@@ -276,6 +277,13 @@ document.getElementById('saveJointBtn').addEventListener('click',saveJointEdits)
   let gridHelper=null;
   let axesHelper=null;
 
+  // Initialize default grid and axes (Z-up orientation)
+  gridHelper=new THREE.GridHelper(10,10,0x888888,0x444444);
+  gridHelper.rotation.x=Math.PI/2; // Rotate to XY plane (Z-up)
+  scene.add(gridHelper);
+  axesHelper=new THREE.AxesHelper(5);
+  scene.add(axesHelper);
+
   function clearModel(){ if(currentModel){ scene.remove(currentModel); currentModel=null; } }
 
   function updateHelpers(){
@@ -286,6 +294,7 @@ document.getElementById('saveJointBtn').addEventListener('click',saveJointEdits)
     const size=box.getSize(new THREE.Vector3());
     const maxDim=Math.max(size.x,size.y,size.z);
     gridHelper=new THREE.GridHelper(maxDim*2,Math.max(2,Math.floor(maxDim/2)),0x888888,0x444444);
+    gridHelper.rotation.x=Math.PI/2; // Rotate to XY plane (Z-up)
     scene.add(gridHelper);
     axesHelper=new THREE.AxesHelper(maxDim*1.2);
     scene.add(axesHelper);
@@ -293,9 +302,12 @@ document.getElementById('saveJointBtn').addEventListener('click',saveJointEdits)
 
   
 
-  function fitCameraToScene(){ if(!currentModel) return; const box=new THREE.Box3().setFromObject(currentModel); const size=box.getSize(new THREE.Vector3()); const center=box.getCenter(new THREE.Vector3()); const maxDim=Math.max(size.x,size.y,size.z); const fov=camera.fov*(Math.PI/180); let cameraZ=Math.abs(maxDim/(2*Math.tan(fov/2)))*1.5; camera.position.set(center.x,center.y,cameraZ); camera.lookAt(center); controls.target.copy(center); controls.update(); updateHelpers(); }
+  function fitCameraToScene(){ if(!currentModel) return; const box=new THREE.Box3().setFromObject(currentModel); const size=box.getSize(new THREE.Vector3()); const center=box.getCenter(new THREE.Vector3()); const maxDim=Math.max(size.x,size.y,size.z); const fov=camera.fov*(Math.PI/180); let cameraDist=Math.abs(maxDim/(2*Math.tan(fov/2)))*1.5; camera.position.set(center.x+cameraDist*0.5,center.y+cameraDist*0.5,center.z+cameraDist); camera.lookAt(center); controls.target.copy(center); controls.update(); updateHelpers(); }
 
-  function tryParseGLB(arrayBuffer){ loader.parse(arrayBuffer,'',gltf=>{ clearModel(); currentModel=gltf.scene; scene.add(currentModel); fitCameraToScene();
+  function tryParseGLB(arrayBuffer){ loader.parse(arrayBuffer,'',gltf=>{ clearModel(); currentModel=gltf.scene; 
+    // Convert Y-up model to Z-up coordinate system
+    currentModel.rotation.x=Math.PI/2;
+    scene.add(currentModel); fitCameraToScene();
     // 若 JSON 为空或无 joints，自动基于骨骼生成默认 joints（含 parent/child）
     let shouldGenerate=false; const raw=jsonInput.value.trim();
     if(raw==='') shouldGenerate=true; else { try{ const data=JSON.parse(raw); const u=data.urdf&&Array.isArray(data.urdf.joints)?data.urdf:data; if(!u||!Array.isArray(u.joints)||u.joints.length===0) shouldGenerate=true; }catch(e){ shouldGenerate=true; } }
@@ -403,6 +415,10 @@ document.getElementById('saveJointBtn').addEventListener('click',saveJointEdits)
 
       slider.addEventListener('input',()=>{ const v=parseFloat(slider.value); jointMap[j.name].value=v; input.value=v; applyJointRotation(j.name,v); updateSliderTrack(); });
       input.addEventListener('change',()=>{ let v=parseFloat(input.value); if(isNaN(v)) v=0; v=Math.max(-360,Math.min(360,v)); input.value=v; slider.value=v; jointMap[j.name].value=v; applyJointRotation(j.name,v); updateSliderTrack(); });
+      
+      // Prevent click event from bubbling when clicking on input or slider
+      input.addEventListener('click',(e)=>{ e.stopPropagation(); });
+      slider.addEventListener('click',(e)=>{ e.stopPropagation(); });
 
       div.appendChild(label); div.appendChild(slider); div.appendChild(input);
       jointControls.appendChild(div);
@@ -563,10 +579,10 @@ document.getElementById('saveJointBtn').addEventListener('click',saveJointEdits)
       const fov=camera.fov * (Math.PI/180);
       const distance=maxDim / (2*Math.tan(fov/2)) * 1.2;
       switch(btn.dataset.view){
-        case 'top': camera.position.set(center.x, center.y+distance, center.z); break;
-        case 'bottom': camera.position.set(center.x, center.y-distance, center.z); break;
-        case 'front': camera.position.set(center.x, center.y, center.z+distance); break;
-        case 'back': camera.position.set(center.x, center.y, center.z-distance); break;
+        case 'top': camera.position.set(center.x, center.y, center.z+distance); break;
+        case 'bottom': camera.position.set(center.x, center.y, center.z-distance); break;
+        case 'front': camera.position.set(center.x, center.y+distance, center.z); break;
+        case 'back': camera.position.set(center.x, center.y-distance, center.z); break;
         case 'left': camera.position.set(center.x-distance, center.y, center.z); break;
         case 'right': camera.position.set(center.x+distance, center.y, center.z); break;
       }
